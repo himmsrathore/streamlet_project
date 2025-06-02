@@ -1,17 +1,17 @@
 import streamlit as st
 import pandas as pd
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 import os
 
 # Initialize the translator
-translator = Translator()
+translator = GoogleTranslator(source='en', target='hi')
 
 # Function to translate text to Hindi and append
 def translate_and_append(text):
     try:
         if pd.isna(text):
             return text
-        hindi_translation = translator.translate(text, dest='hi').text
+        hindi_translation = translator.translate(text)
         return f"{text} [ {hindi_translation} ]"
     except Exception as e:
         st.error(f"Translation error: {e} for text: {text}")
