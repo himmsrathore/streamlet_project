@@ -1,21 +1,11 @@
-from deep_translator import GoogleTranslator
 import pdfplumber
 import pandas as pd
 import streamlit as st
 import os
 import re
 
-translator = GoogleTranslator(source='en', target='hi')
-
-def translate(text):
-    try:
-        return f"{text} [ {translator.translate(text)} ]"
-    except Exception:
-        return text
-
 def process_pdf(file):
     try:
-        # Read and flatten lines
         all_lines = []
         with pdfplumber.open(file) as pdf:
             for page in pdf.pages:
@@ -28,43 +18,46 @@ def process_pdf(file):
         i = 0
         while i < len(all_lines):
             if all_lines[i].startswith("Question Id :"):
-                question_text = ""
                 i += 1
-                # Gather question (until "Answer : Option Id")
+                question_text = ""
+
+                # Extract question lines until "Answer : Option Id"
                 while i < len(all_lines) and not all_lines[i].startswith("Answer : Option Id"):
                     question_text += all_lines[i] + " "
                     i += 1
                 question_text = question_text.strip()
 
-                # Gather options
-                options = []
-                if i < len(all_lines) and all_lines[i].startswith("Answer : Option Id"):
-                    i += 1
-                    while i < len(all_lines) and re.match(r"\([A-D]\)", all_lines[i]):
-                        option_line = all_lines[i]
-                        option_text = re.sub(r"\([A-D]\)\s*", "", option_line)
-                        # Remove trailing digits like "1001001"
-                        option_text = re.sub(r"\d+$", "", option_text).strip()
-                        options.append(option_text)
-                        i += 1
+                # Move past "Answer : Option Id"
+                i += 1
 
-                # Find the right answer
-                answer_text = ""
+                # Extract 4 options
+                options = []
+                while i < len(all_lines) and re.match(r"\([A-D]\)", all_lines[i]):
+                    line = all_lines[i]
+                    option_text = re.sub(r"\([A-D]\)\s*", "", line)  # Remove (A), (B), etc.
+                    option_text = re.sub(r"\d+$", "", option_text).strip()  # Remove trailing IDs
+                    options.append(option_text)
+                    i += 1
+
+                # Extract Right Answer
+                answer = ""
                 while i < len(all_lines) and not all_lines[i].startswith("Right Answer :"):
                     i += 1
                 if i < len(all_lines) and all_lines[i].startswith("Right Answer :"):
-                    answer_text = all_lines[i].replace("Right Answer :", "").strip()
-                    i += 1  # Skip the answer explanation line too if needed
+                    answer = all_lines[i].replace("Right Answer :", "").strip()
+                    i += 1  # Skip to next block
 
-                if len(options) == 4:
+                # Only add complete entries
+                if len(options) == 4 and question_text and answer:
                     questions.append({
-                        'question': translate(question_text),
-                        'answer': translate(answer_text),
-                        'option-1': translate(options[0]),
-                        'option-2': translate(options[1]),
-                        'option-3': translate(options[2]),
-                        'option-4': translate(options[3])
+                        'question': question_text,
+                        'answer': answer,
+                        'option-1': options[0],
+                        'option-2': options[1],
+                        'option-3': options[2],
+                        'option-4': options[3],
                     })
+
             else:
                 i += 1
 
