@@ -1,41 +1,78 @@
-import streamlit as st
-import pandas as pd
+from deep_translator import GoogleTranslator
 import pdfplumber
+import pandas as pd
+import streamlit as st
 import os
+import re
+
+translator = GoogleTranslator(source='en', target='hi')
+
+def translate(text):
+    try:
+        return f"{text} [ {translator.translate(text)} ]"
+    except Exception:
+        return text
 
 def process_pdf(file):
     try:
-        extracted_text = []
+        # Read and flatten lines
+        all_lines = []
         with pdfplumber.open(file) as pdf:
             for page in pdf.pages:
                 text = page.extract_text()
                 if text:
-                    extracted_text.extend(text.split('\n'))
+                    lines = text.strip().split('\n')
+                    all_lines.extend(lines)
 
-        df = pd.DataFrame({'Line': extracted_text})
+        questions = []
+        i = 0
+        while i < len(all_lines):
+            if all_lines[i].startswith("Question Id :"):
+                question_text = ""
+                i += 1
+                # Gather question (until "Answer : Option Id")
+                while i < len(all_lines) and not all_lines[i].startswith("Answer : Option Id"):
+                    question_text += all_lines[i] + " "
+                    i += 1
+                question_text = question_text.strip()
+
+                # Gather options
+                options = []
+                if i < len(all_lines) and all_lines[i].startswith("Answer : Option Id"):
+                    i += 1
+                    while i < len(all_lines) and re.match(r"\([A-D]\)", all_lines[i]):
+                        option_line = all_lines[i]
+                        option_text = re.sub(r"\([A-D]\)\s*", "", option_line)
+                        # Remove trailing digits like "1001001"
+                        option_text = re.sub(r"\d+$", "", option_text).strip()
+                        options.append(option_text)
+                        i += 1
+
+                # Find the right answer
+                answer_text = ""
+                while i < len(all_lines) and not all_lines[i].startswith("Right Answer :"):
+                    i += 1
+                if i < len(all_lines) and all_lines[i].startswith("Right Answer :"):
+                    answer_text = all_lines[i].replace("Right Answer :", "").strip()
+                    i += 1  # Skip the answer explanation line too if needed
+
+                if len(options) == 4:
+                    questions.append({
+                        'question': translate(question_text),
+                        'answer': translate(answer_text),
+                        'option-1': translate(options[0]),
+                        'option-2': translate(options[1]),
+                        'option-3': translate(options[2]),
+                        'option-4': translate(options[3])
+                    })
+            else:
+                i += 1
+
+        df = pd.DataFrame(questions)
         output_file = "pdf_to_csv_output.csv"
         df.to_csv(output_file, index=False, encoding='utf-8-sig')
         return output_file
+
     except Exception as e:
         st.error(f"Error processing PDF: {e}")
         return None
-
-def pdf_to_csv_ui():
-    st.header("Project 2: Convert PDF to CSV")
-    uploaded_pdf = st.file_uploader("Upload a PDF file", type=["pdf"])
-    if uploaded_pdf is not None:
-        st.write("PDF uploaded successfully!")
-        if st.button("Convert PDF to CSV"):
-            with st.spinner("Extracting text and converting..."):
-                output_file = process_pdf(uploaded_pdf)
-            if output_file:
-                with open(output_file, "rb") as file:
-                    st.download_button(
-                        label="Download Extracted CSV",
-                        data=file,
-                        file_name="pdf_to_csv_output.csv",
-                        mime="text/csv"
-                    )
-                st.success("PDF converted to CSV!")
-                if os.path.exists(output_file):
-                    os.remove(output_file)
