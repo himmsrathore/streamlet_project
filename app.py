@@ -1,12 +1,13 @@
 import streamlit as st
 import pandas as pd
 from deep_translator import GoogleTranslator
+import pdfplumber
 import os
 
-# Initialize the translator
+# Initialize translator
 translator = GoogleTranslator(source='en', target='hi')
 
-# Function to translate text to Hindi and append
+# Translate and append Hindi
 def translate_and_append(text):
     try:
         if pd.isna(text):
@@ -15,20 +16,15 @@ def translate_and_append(text):
         return f"{text} [ {hindi_translation} ]"
     except Exception as e:
         st.error(f"Translation error: {e} for text: {text}")
-        return text  # Return original text if translation fails
+        return text
 
-# Function to process the uploaded CSV
+# CSV Processing Function
 def process_csv(file):
     try:
-        # Read the uploaded CSV
         data = pd.read_csv(file, encoding='utf-8-sig')
-        
-        # Translate specified columns
         for col in ['question', 'option-1', 'option-2', 'option-3', 'option-4']:
             if col in data.columns:
                 data[col] = data[col].apply(translate_and_append)
-        
-        # Save the converted data to a temporary file
         output_file = "converted_output.csv"
         data.to_csv(output_file, index=False, encoding='utf-8-sig')
         return output_file
@@ -36,30 +32,40 @@ def process_csv(file):
         st.error(f"Error processing file: {e}")
         return None
 
+# PDF Processing Function
+def process_pdf(file):
+    try:
+        extracted_text = []
+        with pdfplumber.open(file) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    extracted_text.extend(text.split('\n'))
+
+        # Create a DataFrame (for example, each line becomes a row)
+        df = pd.DataFrame({'Line': extracted_text})
+        output_file = "pdf_to_csv_output.csv"
+        df.to_csv(output_file, index=False, encoding='utf-8-sig')
+        return output_file
+    except Exception as e:
+        st.error(f"Error processing PDF: {e}")
+        return None
+
 # Streamlit app
 def main():
-    # Set page title
-    st.title("CSV Converter App")
+    st.title("CSV & PDF Converter App")
 
-    # Sidebar for project selection
-    project = st.sidebar.selectbox("Select Project", ["Project 1: CSV Converter", "Project 2: In Development"])
+    project = st.sidebar.selectbox("Select Project", ["Project 1: CSV Converter", "Project 2: PDF to CSV"])
 
     if project == "Project 1: CSV Converter":
         st.header("Project 1: English to Hindi CSV Converter")
-        
-        # File uploader
         uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
-        
         if uploaded_file is not None:
             st.write("File uploaded successfully!")
-            
-            # Process the file when the user clicks the button
             if st.button("Convert CSV"):
                 with st.spinner("Converting..."):
                     output_file = process_csv(uploaded_file)
-                
                 if output_file:
-                    # Provide download button for the converted file
                     with open(output_file, "rb") as file:
                         st.download_button(
                             label="Download Converted CSV",
@@ -67,15 +73,29 @@ def main():
                             file_name="converted_output.csv",
                             mime="text/csv"
                         )
-                    st.success("Conversion completed! Download the file using the button above.")
-                    
-                    # Clean up temporary file
+                    st.success("Conversion completed!")
                     if os.path.exists(output_file):
                         os.remove(output_file)
-        
-    elif project == "Project 2: In Development":
-        st.header("Project 2: In Development")
-        st.write("This project is currently under development. Stay tuned for updates!")
+
+    elif project == "Project 2: PDF to CSV":
+        st.header("Project 2: Convert PDF to CSV")
+        uploaded_pdf = st.file_uploader("Upload a PDF file", type=["pdf"])
+        if uploaded_pdf is not None:
+            st.write("PDF uploaded successfully!")
+            if st.button("Convert PDF to CSV"):
+                with st.spinner("Extracting text and converting..."):
+                    output_file = process_pdf(uploaded_pdf)
+                if output_file:
+                    with open(output_file, "rb") as file:
+                        st.download_button(
+                            label="Download Extracted CSV",
+                            data=file,
+                            file_name="pdf_to_csv_output.csv",
+                            mime="text/csv"
+                        )
+                    st.success("PDF converted to CSV!")
+                    if os.path.exists(output_file):
+                        os.remove(output_file)
 
 if __name__ == "__main__":
     main()
